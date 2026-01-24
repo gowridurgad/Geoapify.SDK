@@ -11,26 +11,23 @@ namespace Geoapify.Storage.Services;
 
 public class StorageUpdaterService : BackgroundService
 {
+	private readonly IEnumerable<IAddressChangedHandler> _changeHandlers;
 	private readonly IGeoapifyClient _client;
 	private readonly StorageUpdaterServiceConfiguration _configuration;
 	private readonly ILogger<StorageUpdaterService>? _logger;
 	private readonly IAddressRepository _repository;
 	private readonly TimeProvider _timeProvider;
 
-	public StorageUpdaterService(IAddressRepository repository, IGeoapifyClient client, IOptions<StorageUpdaterServiceConfiguration> options, TimeProvider timeProvider, ILogger<StorageUpdaterService>? logger)
+	public StorageUpdaterService(IAddressRepository repository, IGeoapifyClient client, IOptions<StorageUpdaterServiceConfiguration> options, TimeProvider timeProvider, IEnumerable<IAddressChangedHandler> changeHandlers,
+		ILogger<StorageUpdaterService>? logger)
 	{
 		_repository = repository;
 		_client = client;
 		_timeProvider = timeProvider;
+		_changeHandlers = changeHandlers;
 		_logger = logger;
 		_configuration = options.Value;
 	}
-
-	/// <summary>
-	///     Event that's raised whenever the StorageUpdateService registers an address that was actually changed and stores
-	///     that address.
-	/// </summary>
-	public static event Action<Address>? AddressChanged;
 
 	protected async override Task ExecuteAsync(CancellationToken stoppingToken)
 	{
@@ -58,6 +55,7 @@ public class StorageUpdaterService : BackgroundService
 		{
 			var updatedAddress = (await _client.ReverseGeocoding.SearchAsync(expiredAddress.Coordinate, new ReverseGeocodingSearchArguments
 				{
+					Language = expiredAddress.Language,
 					Limit = 1
 				},
 				cancellationToken)).SingleOrDefault();
@@ -71,8 +69,24 @@ public class StorageUpdaterService : BackgroundService
 				await _repository.UpsertAsync(updatedAddress, cancellationToken);
 				if (updatedAddress.HasChanged(expiredAddress))
 				{
-					AddressChanged?.Invoke(updatedAddress); // TODO: Consider using something else for raising events? This is cumbersome to unsubscribe from
+					await NotifyHandlersAsync(updatedAddress);
 				}
+			}
+		}
+	}
+
+	private async Task NotifyHandlersAsync(Address updatedAddress)
+	{
+		foreach (var handler in _changeHandlers)
+		{
+			try
+			{
+				await handler.HandleAsync(updatedAddress);
+			}
+			catch (Exception ex)
+			{
+				var handlerType = handler.GetType();
+				_logger?.LogError(ex, "Exception when invoking {Handler}: {Message}", handlerType.FullName ?? handlerType.Name, ex.Message);
 			}
 		}
 	}
