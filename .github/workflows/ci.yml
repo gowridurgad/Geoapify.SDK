@@ -22,7 +22,7 @@ jobs:
     #  matrix:
     #     # os: [ubuntu-latest, macos-latest, windows-latest] 
         
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
 
     steps:
@@ -37,6 +37,13 @@ jobs:
       uses: actions/setup-dotnet@main
       with:
         dotnet-version: 9.0.x
+
+    - name: Show dotnet being used
+      run: |
+         where dotnet
+         dotnet --info
+         dotnet --list-sdks
+         dotnet --list-runtimes
 
     - name: 'Restore packages'
       run: dotnet restore ${{ env.SOLUTION_PATH }}
