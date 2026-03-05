@@ -25,6 +25,10 @@ jobs:
     - name: 'Checkout'
       uses: actions/checkout@v4
 
+    - name: Clear cache
+      run: |
+          mv "${{ runner.tool_cache }}" "${{ runner.tool_cache }}.old" || true
+          mkdir -p "${{ runner.tool_cache }}"
     - name: 'Install dotnet'
       uses: actions/setup-dotnet@v5
       with:
